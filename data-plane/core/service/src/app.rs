@@ -54,7 +54,10 @@ where
     identity_verifier: V,
 
     /// ID of the local connection
-    conn_id: u64,
+    local_conn_id: u64,
+
+    /// ID of connection with the remote slim node
+    remote_conn_id: u64,
 
     /// Tx channels
     tx_slim: SlimChannelSender,
@@ -114,7 +117,8 @@ where
         agent_name: &Agent,
         identity_provider: P,
         identity_verifier: V,
-        conn_id: u64,
+        local_conn_id: u64,
+        remote_conn_id: u64,
         tx_slim: SlimChannelSender,
         tx_app: AppChannelSender,
         storage_path: std::path::PathBuf,
@@ -144,7 +148,8 @@ where
             agent_name: agent_name.clone(),
             identity_provider,
             identity_verifier,
-            conn_id,
+            local_conn_id,
+            remote_conn_id,
             tx_slim,
             tx_app,
             transmitter,

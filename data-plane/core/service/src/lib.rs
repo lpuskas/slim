@@ -234,6 +234,7 @@ impl Service {
     pub async fn create_app<P, V>(
         &self,
         app_name: &Agent,
+        remote_conn_id: u64,
         identity_provider: P,
         identity_verifier: V,
     ) -> Result<(App<P, V>, AppChannelReceiver), ServiceError>
@@ -257,7 +258,7 @@ impl Service {
         })?;
 
         // Channels to communicate with SLIM
-        let (conn_id, tx_slim, rx_slim) = self.message_processor.register_local_connection();
+        let (local_conn_id, tx_slim, rx_slim) = self.message_processor.register_local_connection();
 
         // Channels to communicate with the local app
         // TODO(msardara): make the buffer size configurable
@@ -268,7 +269,8 @@ impl Service {
             app_name,
             identity_provider,
             identity_verifier,
-            conn_id,
+            local_conn_id,
+            remote_conn_id,
             tx_slim,
             tx_app,
             storage_path,
@@ -495,11 +497,17 @@ mod tests {
             .build_server(ID::new_with_name(Kind::new(KIND).unwrap(), "test").unwrap())
             .unwrap();
 
+         // get the connection id
+        let remote_conn_id = service
+            .get_connection_id(&config.clients()[0].endpoint)
+            .unwrap();
+
         // create a subscriber
         let subscriber_agent = Agent::from_strings("cisco", "default", "subscriber_agent", 0);
         let (sub_app, mut sub_rx) = service
             .create_app(
                 &subscriber_agent,
+                remote_conn_id,
                 SharedSecret::new("a", "group"),
                 SharedSecret::new("a", "group"),
             )
@@ -511,6 +519,7 @@ mod tests {
         let (pub_app, _rx) = service
             .create_app(
                 &publisher_agent,
+                remote_conn_id,
                 SharedSecret::new("a", "group"),
                 SharedSecret::new("a", "group"),
             )
@@ -592,11 +601,17 @@ mod tests {
             .build_server(ID::new_with_name(Kind::new(KIND).unwrap(), "test").unwrap())
             .unwrap();
 
+         // get the connection id
+        let remote_conn_id = service
+            .get_connection_id(&config.clients()[0].endpoint)
+            .unwrap();
+
         // register local agent
         let agent = Agent::from_strings("cisco", "default", "session_agent", 0);
         let (app, _) = service
             .create_app(
                 &agent,
+                remote_conn_id,
                 SharedSecret::new("a", "group"),
                 SharedSecret::new("a", "group"),
             )

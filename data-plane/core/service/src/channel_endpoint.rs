@@ -1856,6 +1856,12 @@ where
         let msg_type = msg.get_session_header().session_message_type();
         match msg_type {
             ProtoSessionMessageType::ChannelDiscoveryRequest => {
+                // here we need to send an invite to the remote node so we need
+                // to set a route to reach it first. this is need also if the 
+                // task will be done later
+                let (name, id) = msg.get_name();
+                self.endpoint.set_route(&name, id).await?;
+
                 // the channel discovery starts a new participant invite.
                 // process the request only if not busy
                 if self.current_task.is_some() {
