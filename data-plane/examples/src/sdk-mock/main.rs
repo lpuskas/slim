@@ -45,25 +45,26 @@ async fn main() {
     let id = slim_config::component::id::ID::new_with_str("slim/0").unwrap();
     let mut svc = config.services.remove(&id).unwrap();
 
+    // run the service - this will create all the connections provided via the config file.
+    svc.run().await.unwrap();
+
+    // get the remote connection id
+    let conn_id = svc
+        .get_connection_id(&svc.config().clients()[0].endpoint)
+        .unwrap();
+
     // create local agent
     let agent_id = 0;
     let agent_name = Agent::from_strings("org", "default", local_agent, agent_id);
     let (app, mut rx) = svc
         .create_app(
             &agent_name,
+            conn_id,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
         )
         .await
         .expect("failed to create agent");
-
-    // run the service - this will create all the connections provided via the config file.
-    svc.run().await.unwrap();
-
-    // get the connection id
-    let conn_id = svc
-        .get_connection_id(&svc.config().clients()[0].endpoint)
-        .unwrap();
 
     let local_agent_type = AgentType::from_strings("org", "default", local_agent);
     app.subscribe(&local_agent_type, Some(agent_id), Some(conn_id))

@@ -497,7 +497,7 @@ mod tests {
             .build_server(ID::new_with_name(Kind::new(KIND).unwrap(), "test").unwrap())
             .unwrap();
 
-         // get the connection id
+        // get the connection id
         let remote_conn_id = service
             .get_connection_id(&config.clients()[0].endpoint)
             .unwrap();
@@ -601,7 +601,7 @@ mod tests {
             .build_server(ID::new_with_name(Kind::new(KIND).unwrap(), "test").unwrap())
             .unwrap();
 
-         // get the connection id
+        // get the connection id
         let remote_conn_id = service
             .get_connection_id(&config.clients()[0].endpoint)
             .unwrap();

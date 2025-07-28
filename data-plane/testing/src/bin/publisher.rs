@@ -174,15 +174,6 @@ async fn main() {
     // create local agent
     let agent_name = Agent::from_strings("cisco", "default", "publisher", id);
 
-    let (app, mut rx) = svc
-        .create_app(
-            &agent_name,
-            SharedSecret::new("a", "group"),
-            SharedSecret::new("a", "group"),
-        )
-        .await
-        .expect("failed to create agent");
-
     // run the service - this will create all the connections provided via the config file.
     svc.run().await.unwrap();
 
@@ -191,6 +182,16 @@ async fn main() {
         .get_connection_id(&svc.config().clients()[0].endpoint)
         .unwrap();
     info!("remote connection id = {}", conn_id);
+
+    let (app, mut rx) = svc
+        .create_app(
+            &agent_name,
+            conn_id,
+            SharedSecret::new("a", "group"),
+            SharedSecret::new("a", "group"),
+        )
+        .await
+        .expect("failed to create agent");
 
     // subscribe for local name
     match app

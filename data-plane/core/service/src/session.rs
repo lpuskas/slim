@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 use parking_lot::RwLock;
 use slim_auth::traits::{TokenProvider, Verifier};
 use slim_datapath::api::ProtoSessionType;
+use slim_datapath::messages::AgentType;
 use slim_mls::mls::Mls;
 use tonic::Status;
 
@@ -99,6 +100,10 @@ pub struct Info {
     pub session_type: ProtoSessionType,
     /// The identifier of the agent that sent the message
     pub message_source: Option<Agent>,
+    /// The identifier of the destination of the the message
+    pub message_destination: Option<AgentType>,
+    /// The id of the message destination if exists
+    pub message_destination_id: Option<u64>,
     /// The input connection id
     pub input_connection: Option<u64>,
 }
@@ -112,6 +117,8 @@ impl Info {
             session_message_type: ProtoSessionMessageType::Unspecified,
             session_type: ProtoSessionType::SessionUnknown,
             message_source: None,
+            message_destination_id: None,
+            message_destination: None,
             input_connection: None,
         }
     }
@@ -130,6 +137,11 @@ impl Info {
 
     pub fn set_message_source(&mut self, message_source: Agent) {
         self.message_source = Some(message_source);
+    }
+
+    pub fn set_message_destination(&mut self, message_destination: AgentType, id: Option<u64>) {
+        self.message_destination = Some(message_destination);
+        self.message_destination_id = id;
     }
 
     pub fn set_input_connection(&mut self, input_connection: u64) {
@@ -160,6 +172,13 @@ impl Info {
         self.message_source.clone()
     }
 
+    pub fn get_message_destination(&self) -> (Option<AgentType>, Option<u64>) {
+        (
+            self.message_destination.clone(),
+            self.message_destination_id,
+        )
+    }
+
     pub fn get_input_connection(&self) -> Option<u64> {
         self.input_connection
     }
@@ -173,6 +192,7 @@ impl From<&Message> for Info {
         let id = session_header.session_id;
         let message_id = session_header.message_id;
         let message_source = message.get_source();
+        let (message_destination, message_destination_id) = message.get_name();
         let input_connection = slim_header.incoming_conn;
         let session_message_type = session_header.session_message_type();
         let session_type = session_header.session_type();
@@ -183,6 +203,8 @@ impl From<&Message> for Info {
             session_message_type,
             session_type,
             message_source: Some(message_source),
+            message_destination: Some(message_destination),
+            message_destination_id,
             input_connection,
         }
     }
@@ -284,11 +306,14 @@ where
     /// Get the source name
     fn source(&self) -> &Agent;
 
-    // get the session config
+    /// get the session config
     fn session_config(&self) -> SessionConfig;
 
-    // set the session config
+    /// set the session config
     fn set_session_config(&self, session_config: &SessionConfig) -> Result<(), SessionError>;
+
+    /// get the remote conn id
+    fn remote_conn_id(&self) -> u64;
 
     /// get the transmitter
     #[allow(dead_code)]
@@ -341,6 +366,9 @@ where
 
     /// Source agent
     source: Agent,
+
+    /// Connection with the remote SLIM node
+    remote_conn_id: u64,
 
     /// MLS state (used only in pub/sub section for the moment)
     mls: Option<Arc<Mutex<Mls<P, V>>>>,
@@ -424,6 +452,13 @@ where
         }
     }
 
+    fn remote_conn_id(&self) -> u64 {
+        match self {
+            Session::FireAndForget(session) => session.remote_conn_id(),
+            Session::Streaming(session) => session.remote_conn_id(),
+        }
+    }
+
     fn tx(&self) -> T {
         match self {
             Session::FireAndForget(session) => session.tx(),
@@ -484,6 +519,10 @@ where
         Ok(())
     }
 
+    fn remote_conn_id(&self) -> u64 {
+        self.remote_conn_id
+    }
+
     fn tx(&self) -> T {
         self.tx.clone()
     }
@@ -509,6 +548,7 @@ where
         tx: T,
         identity_provider: P,
         verifier: V,
+        remote_conn_id: u64,
         mls_enabled: bool,
         storage_path: std::path::PathBuf,
     ) -> Self {
@@ -532,6 +572,7 @@ where
             session_direction,
             session_config: RwLock::new(session_config),
             source,
+            remote_conn_id,
             mls,
             tx,
         };

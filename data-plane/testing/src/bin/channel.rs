@@ -32,16 +32,6 @@ pub struct Args {
     )]
     is_moderator: bool,
 
-    /// Runs the endpoint in attacker mode.
-    #[arg(
-        short,
-        long,
-        value_name = "IS_ATTACKER",
-        required = false,
-        default_value_t = false
-    )]
-    is_attacker: bool,
-
     /// Runs the endpoint with MLS disabled.
     #[arg(
         short,
@@ -92,10 +82,6 @@ impl Args {
 
     pub fn is_moderator(&self) -> &bool {
         &self.is_moderator
-    }
-
-    pub fn is_attacker(&self) -> &bool {
-        &self.is_attacker
     }
 
     pub fn mls_disabled(&self) -> &bool {
@@ -149,7 +135,6 @@ async fn main() {
     let local_name_str = args.name().clone();
     let frequency = *args.frequency();
     let is_moderator = *args.is_moderator();
-    let is_attacker = *args.is_attacker();
     let msl_enabled = !*args.mls_disabled();
     let moderator_name = args.moderator_name().clone();
     let max_packets = args.max_packets;
@@ -174,15 +159,6 @@ async fn main() {
 
     let channel_name = AgentType::from_strings("channel", "channel", "channel");
 
-    let (app, mut rx) = svc
-        .create_app(
-            &local_name,
-            SharedSecret::new(&local_name_str, "group"),
-            SharedSecret::new(&local_name_str, "group"),
-        )
-        .await
-        .expect("failed to create agent");
-
     // run the service - this will create all the connections provided via the config file.
     svc.run().await.unwrap();
 
@@ -191,6 +167,16 @@ async fn main() {
         .get_connection_id(&svc.config().clients()[0].endpoint)
         .unwrap();
     info!("remote connection id = {}", conn_id);
+
+    let (app, mut rx) = svc
+        .create_app(
+            &local_name,
+            conn_id,
+            SharedSecret::new(&local_name_str, "group"),
+            SharedSecret::new(&local_name_str, "group"),
+        )
+        .await
+        .expect("failed to create agent");
 
     // subscribe for local name
     app.subscribe(
@@ -210,11 +196,6 @@ async fn main() {
             // add to the participants list
             let p = parse_string_type(n);
             participants.push(p.clone());
-
-            // add route
-            app.set_route(&p, None, conn_id)
-                .await
-                .expect("an error accoured while adding a route");
         }
     }
 
@@ -233,7 +214,7 @@ async fn main() {
                     Some(Duration::from_secs(1)),
                     msl_enabled,
                 )),
-                Some(12345),
+                None,
             )
             .await
             .expect("error creating session");
@@ -244,6 +225,9 @@ async fn main() {
             app.invite_participant(&p, info.clone())
                 .await
                 .expect("error sending invite message");
+
+            //app.set_route(&p, None, conn_id).await
+            //                .expect("an error accoured while adding a route");
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -305,29 +289,6 @@ async fn main() {
         }
         let moderator = parse_string_name(moderator_name);
 
-        if is_attacker {
-            info!("Starting the attacker");
-            let _ = app
-                .create_session(
-                    slim_service::session::SessionConfig::Streaming(StreamingConfiguration::new(
-                        slim_service::session::SessionDirection::Bidirectional,
-                        Some(channel_name.clone()),
-                        true,
-                        Some(10),
-                        Some(Duration::from_secs(1)),
-                        true,
-                    )),
-                    Some(12345),
-                )
-                .await
-                .expect("error creating session");
-
-            // subscribe for local name
-            app.subscribe(&channel_name, None, Some(conn_id))
-                .await
-                .expect("an error accoured while adding a subscription");
-        }
-
         // listen for messages
         loop {
             match rx.recv().await {
@@ -356,7 +317,7 @@ async fn main() {
                         let info = msg.info;
                         info!("received message: {}", payload,);
 
-                        if publisher == moderator && !is_attacker {
+                        if publisher == moderator {
                             // for each message coming from the moderator reply with another message
                             info!("reply to moderator with message {}", msg_id);
 

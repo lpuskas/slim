@@ -20,8 +20,8 @@ use crate::channel_endpoint::{
 };
 use crate::errors::SessionError;
 use crate::session::{
-    Common, CommonSession, Id, MessageDirection, MessageHandler, SessionConfig, SessionConfigTrait,
-    SessionDirection, SessionMessage, SessionTransmitter, State,
+    Common, CommonSession, Id, Info, MessageDirection, MessageHandler, SessionConfig,
+    SessionConfigTrait, SessionDirection, SessionMessage, SessionTransmitter, State,
 };
 use crate::timer;
 use slim_datapath::api::{ProtoMessage as Message, ProtoSessionMessageType};
@@ -324,21 +324,32 @@ where
         session_header.set_session_type(ProtoSessionType::SessionFireForget);
         session_header.set_session_message_type(ProtoSessionMessageType::ChannelDiscoveryRequest);
         session_header.set_session_id(self.state.session_id);
-        session_header.set_message_id(rand::rng().random_range(0..u32::MAX));
+        let msg_id = rand::rng().random_range(0..u32::MAX);
+        session_header.set_message_id(msg_id);
+
+        let info = Info {
+            id: self.state.session_id,
+            message_id: Some(msg_id),
+            session_message_type: ProtoSessionMessageType::ChannelDiscoveryRequest,
+            session_type: ProtoSessionType::SessionFireForget,
+            message_source: Some(self.state.source.clone()),
+            message_destination: Some(agent_type.clone()),
+            message_destination_id: None,
+            input_connection: None,
+        };
+
+        let session_msg = SessionMessage::from((probe_message, info));
 
         self.state.sticky_session_status = StickySessionStatus::Discovering;
 
-        self.state.channel_endpoint.on_message(probe_message).await
+        self.state.channel_endpoint.on_message(session_msg).await
     }
 
     async fn handle_channel_discovery_reply(
         &mut self,
         message: SessionMessage,
     ) -> Result<(), SessionError> {
-        self.state
-            .channel_endpoint
-            .on_message(message.message)
-            .await
+        self.state.channel_endpoint.on_message(message).await
     }
 
     async fn handle_channel_join_request(
@@ -350,10 +361,7 @@ where
         let incoming_conn = message.message.get_incoming_conn();
 
         // pass the message to the channel endpoint
-        self.state
-            .channel_endpoint
-            .on_message(message.message)
-            .await?;
+        self.state.channel_endpoint.on_message(message).await?;
 
         // No error - this session is sticky
         self.state.sticky_name = Some(source);
@@ -379,10 +387,7 @@ where
         );
 
         // send message to channel endpoint
-        self.state
-            .channel_endpoint
-            .on_message(message.message)
-            .await?;
+        self.state.channel_endpoint.on_message(message).await?;
 
         match status {
             StickySessionStatus::Discovering => {
@@ -644,10 +649,7 @@ where
             | ProtoSessionMessageType::ChannelMlsProposal
             | ProtoSessionMessageType::ChannelMlsAck => {
                 // Handle mls stuff
-                self.state
-                    .channel_endpoint
-                    .on_message(message.message)
-                    .await?;
+                self.state.channel_endpoint.on_message(message).await?;
 
                 // Flush the sticky buffer if MLS is enabled
                 if self.state.channel_endpoint.is_mls_up()? {
@@ -721,6 +723,7 @@ where
         session_config: FireAndForgetConfiguration,
         session_direction: SessionDirection,
         agent: Agent,
+        remote_conn_id: u64,
         tx_slim_app: T,
         identity_provider: P,
         identity_verifier: V,
@@ -737,6 +740,7 @@ where
             tx_slim_app.clone(),
             identity_provider,
             identity_verifier,
+            remote_conn_id,
             session_config.mls_enabled,
             storage_path,
         );
@@ -755,6 +759,7 @@ where
                     common.source().agent_id_option(),
                     id,
                     ProtoSessionType::SessionFireForget,
+                    common.remote_conn_id(),
                     60,
                     Duration::from_secs(1),
                     mls,
@@ -769,6 +774,7 @@ where
                     common.source().agent_id_option(),
                     id,
                     ProtoSessionType::SessionFireForget,
+                    common.remote_conn_id(),
                     60,
                     Duration::from_secs(1),
                     mls,
@@ -866,6 +872,10 @@ where
         self.common.identity_verifier().clone()
     }
 
+    fn remote_conn_id(&self) -> u64 {
+        self.common.remote_conn_id()
+    }
+
     fn tx(&self) -> T {
         self.common.tx().clone()
     }
@@ -931,12 +941,14 @@ mod tests {
         let tx = MockTransmitter { tx_app, tx_slim };
 
         let source = Agent::from_strings("cisco", "default", "local_agent", 0);
+        let remote_conn = 1;
 
         let session = FireAndForget::new(
             0,
             FireAndForgetConfiguration::default(),
             SessionDirection::Bidirectional,
             source.clone(),
+            remote_conn,
             tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -959,12 +971,14 @@ mod tests {
         let tx = MockTransmitter { tx_app, tx_slim };
 
         let source = Agent::from_strings("cisco", "default", "local_agent", 0);
+        let remote_conn = 1;
 
         let session = FireAndForget::new(
             0,
             FireAndForgetConfiguration::default(),
             SessionDirection::Bidirectional,
             source.clone(),
+            remote_conn,
             tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1010,12 +1024,14 @@ mod tests {
         let tx = MockTransmitter { tx_app, tx_slim };
 
         let source = Agent::from_strings("cisco", "default", "local_agent", 0);
+        let remote_conn = 1;
 
         let session = FireAndForget::new(
             0,
             FireAndForgetConfiguration::default(),
             SessionDirection::Bidirectional,
             source.clone(),
+            remote_conn,
             tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1076,6 +1092,7 @@ mod tests {
         let tx = MockTransmitter { tx_app, tx_slim };
 
         let source = Agent::from_strings("cisco", "default", "local_agent", 0);
+        let remote_conn = 1;
 
         let session = FireAndForget::new(
             0,
@@ -1088,6 +1105,7 @@ mod tests {
             },
             SessionDirection::Bidirectional,
             source.clone(),
+            remote_conn,
             tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1153,6 +1171,7 @@ mod tests {
 
         let local = Agent::from_strings("cisco", "default", "local_agent", 0);
         let remote = Agent::from_strings("cisco", "default", "remote_agent", 0);
+        let remote_conn = 1;
 
         let session_sender = FireAndForget::new(
             0,
@@ -1165,6 +1184,7 @@ mod tests {
             },
             SessionDirection::Bidirectional,
             local.clone(),
+            remote_conn,
             tx_sender,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1177,6 +1197,7 @@ mod tests {
             FireAndForgetConfiguration::default(),
             SessionDirection::Bidirectional,
             remote.clone(),
+            remote_conn,
             tx_receiver,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1272,6 +1293,7 @@ mod tests {
         let tx = MockTransmitter { tx_app, tx_slim };
 
         let source = Agent::from_strings("cisco", "default", "local_agent", 0);
+        let remote_conn = 1;
 
         {
             let _session = FireAndForget::new(
@@ -1279,6 +1301,7 @@ mod tests {
                 FireAndForgetConfiguration::default(),
                 SessionDirection::Bidirectional,
                 source.clone(),
+                remote_conn,
                 tx,
                 SharedSecret::new("a", "group"),
                 SharedSecret::new("a", "group"),
@@ -1316,6 +1339,7 @@ mod tests {
 
         let local = Agent::from_strings("cisco", "default", "local_agent", 0);
         let remote = Agent::from_strings("cisco", "default", "remote_agent", 0);
+        let remote_conn = 1;
 
         let sender_session = FireAndForget::new(
             0,
@@ -1328,6 +1352,7 @@ mod tests {
             },
             SessionDirection::Bidirectional,
             local.clone(),
+            remote_conn,
             sender_tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1345,6 +1370,7 @@ mod tests {
             },
             SessionDirection::Bidirectional,
             remote.clone(),
+            remote_conn,
             receiver_tx,
             SharedSecret::new("b", "group"),
             SharedSecret::new("b", "group"),

@@ -225,7 +225,7 @@ where
     T: SessionTransmitter + Send + Sync + Clone + 'static,
 {
     common: Common<P, V, T>,
-    tx: mpsc::Sender<Result<(Message, MessageDirection), Status>>,
+    tx: mpsc::Sender<Result<(SessionMessage, MessageDirection), Status>>,
 }
 
 impl<P, V, T> Streaming<P, V, T>
@@ -240,6 +240,7 @@ where
         session_config: StreamingConfiguration,
         session_direction: SessionDirection,
         agent: Agent,
+        remote_conn_id: u64,
         tx_slim_app: T,
         identity_provider: P,
         identity_verifier: V,
@@ -255,6 +256,7 @@ where
             tx_slim_app.clone(),
             identity_provider,
             identity_verifier,
+            remote_conn_id,
             session_config.mls_enabled,
             storage_path,
         );
@@ -266,7 +268,7 @@ where
 
     fn process_message(
         &self,
-        mut rx: mpsc::Receiver<Result<(Message, MessageDirection), Status>>,
+        mut rx: mpsc::Receiver<Result<(SessionMessage, MessageDirection), Status>>,
         session_direction: SessionDirection,
     ) {
         let session_id = self.common.id();
@@ -347,6 +349,7 @@ where
         let tx = self.common.tx();
         let source = self.common.source().clone();
         let id = self.common.id();
+        let remote_conn_id = self.common.remote_conn_id();
         tokio::spawn(async move {
             debug!("starting message processing on session {}", session_id);
 
@@ -373,6 +376,7 @@ where
                         None,
                         id,
                         ProtoSessionType::SessionPubSub,
+                        remote_conn_id,
                         60,
                         Duration::from_secs(1),
                         mls,
@@ -387,6 +391,7 @@ where
                         None,
                         id,
                         ProtoSessionType::SessionPubSub,
+                        remote_conn_id,
                         60,
                         Duration::from_secs(1),
                         mls,
@@ -413,12 +418,12 @@ where
                                 let (msg, direction) = result.unwrap();
 
                                 // process the messages for the channel endpoint first
-                                match msg.get_session_header().session_message_type() {
+                                match msg.message.get_session_header().session_message_type() {
                                     ProtoSessionMessageType::ChannelLeaveReply => {
                                         // we need to remove the partipicant that was removed from the channel
                                         // also in the list of receiver buffers. the name to search is the
                                         // surce of the ChannelLeaveReply message
-                                        let name = msg.get_source();
+                                        let name = msg.message.get_source();
                                         match &mut endpoint {
                                             Endpoint::Producer(_) => {/* nothing to do at the producer */}
                                             Endpoint::Receiver(receiver) => {
@@ -483,7 +488,7 @@ where
                                                 trace!("received message from SLIM on producer session {}", session_id);
                                                 // received a message from the SLIM
                                                 // this must be an RTX message otherwise drop it
-                                                match msg.get_session_header().session_message_type() {
+                                                match msg.message.get_session_header().session_message_type() {
                                                     ProtoSessionMessageType::RtxRequest => {}
                                                     _ => {
                                                         error!("received invalid packet type on producer session {}: not RTX request", session_id);
@@ -491,19 +496,19 @@ where
                                                     }
                                                 };
 
-                                                process_incoming_rtx_request(msg, session_id, producer, &source, &tx).await;
+                                                process_incoming_rtx_request(msg.message, session_id, producer, &source, &tx).await;
                                             }
                                             MessageDirection::South => {
                                                 // received a message from the application
                                                 // if flushed is true send the packet, otherwise keep it in the buffer
                                                 let bidirectional = false;
-                                                process_message_from_app(msg, session_id, producer, bidirectional, flushed, &tx).await;
+                                                process_message_from_app(msg.message, session_id, producer, bidirectional, flushed, &tx).await;
                                             }
                                         }
                                     }
                                     Endpoint::Receiver(receiver) => {
                                         trace!("received message from SLIM on receiver session {}", session_id);
-                                        process_message_from_slim(msg, session_id, receiver, &source, max_retries, timeout, &rtx_timer_tx, &tx).await;
+                                        process_message_from_slim(msg.message, session_id, receiver, &source, max_retries, timeout, &rtx_timer_tx, &tx).await;
                                     }
                                     Endpoint::Bidirectional(state) => {
                                         match direction {
@@ -511,13 +516,13 @@ where
                                                 // in this case the message can be a stream message to send to the app, a rtx request,
                                                 // or a channel control message to handle in the channel endpoint
                                                 trace!("received message from SLIM on bidirectional session {}", session_id);
-                                                match msg.get_session_header().session_message_type() {
+                                                match msg.message.get_session_header().session_message_type() {
                                                     ProtoSessionMessageType::RtxRequest => {
                                                         // handle RTX request
-                                                        process_incoming_rtx_request(msg, session_id, &state.producer, &source, &tx).await;
+                                                        process_incoming_rtx_request(msg.message, session_id, &state.producer, &source, &tx).await;
                                                     }
                                                     _ => {
-                                                        process_message_from_slim(msg, session_id, &mut state.receiver, &source, max_retries, timeout, &rtx_timer_tx, &tx).await;
+                                                        process_message_from_slim(msg.message, session_id, &mut state.receiver, &source, max_retries, timeout, &rtx_timer_tx, &tx).await;
                                                     }
                                                 }
                                             }
@@ -525,7 +530,7 @@ where
                                                 // received a message from the APP
                                                 // if flushed is true send the packet, otherwise keep it in the buffer
                                                 let bidirectional = true;
-                                                process_message_from_app(msg, session_id, &mut state.producer, bidirectional, flushed, &tx).await;
+                                                process_message_from_app(msg.message, session_id, &mut state.producer, bidirectional, flushed, &tx).await;
                                             }
                                         };
                                     }
@@ -1078,7 +1083,7 @@ where
         direction: MessageDirection,
     ) -> Result<(), SessionError> {
         self.tx
-            .send(Ok((message.message, direction)))
+            .send(Ok((message, direction)))
             .await
             .map_err(|e| SessionError::Processing(e.to_string()))
     }
@@ -1120,6 +1125,10 @@ where
         self.common.identity_verifier().clone()
     }
 
+    fn remote_conn_id(&self) -> u64 {
+        self.common.remote_conn_id()
+    }
+
     fn tx(&self) -> T {
         self.common.tx().clone()
     }
@@ -1158,11 +1167,14 @@ mod tests {
         let session_config: StreamingConfiguration =
             StreamingConfiguration::new(SessionDirection::Sender, None, false, None, None, false);
 
+        let remote_conn = 1;
+
         let session = Streaming::new(
             0,
             session_config.clone(),
             SessionDirection::Sender,
             source.clone(),
+            remote_conn,
             tx.clone(),
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1190,6 +1202,7 @@ mod tests {
             session_config.clone(),
             SessionDirection::Receiver,
             source.clone(),
+            remote_conn,
             tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1237,11 +1250,14 @@ mod tests {
         let send = Agent::from_strings("cisco", "default", "sender", 0);
         let recv = Agent::from_strings("cisco", "default", "receiver", 0);
 
+        let remote_conn = 1;
+
         let sender = Streaming::new(
             0,
             session_config_sender,
             SessionDirection::Sender,
             send.clone(),
+            remote_conn,
             tx_sender,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1252,6 +1268,7 @@ mod tests {
             session_config_receiver,
             SessionDirection::Receiver,
             recv.clone(),
+            remote_conn,
             tx_receiver,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1318,12 +1335,14 @@ mod tests {
         );
 
         let agent = Agent::from_strings("cisco", "default", "sender", 0);
+        let remote_conn = 1;
 
         let session = Streaming::new(
             0,
             session_config,
             SessionDirection::Receiver,
             agent.clone(),
+            remote_conn,
             tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1402,12 +1421,14 @@ mod tests {
         );
 
         let agent = Agent::from_strings("cisco", "default", "receiver", 0);
+        let remote_conn = 1;
 
         let session = Streaming::new(
             120,
             session_config,
             SessionDirection::Sender,
             agent.clone(),
+            remote_conn,
             tx,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1523,12 +1544,14 @@ mod tests {
 
         let send = Agent::from_strings("cisco", "default", "sender", 0);
         let recv = Agent::from_strings("cisco", "default", "receiver", 0);
+        let remote_conn = 1;
 
         let sender = Streaming::new(
             0,
             session_config_sender,
             SessionDirection::Sender,
             send.clone(),
+            remote_conn,
             tx_sender,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1539,6 +1562,7 @@ mod tests {
             session_config_receiver,
             SessionDirection::Receiver,
             recv.clone(),
+            remote_conn,
             tx_receiver,
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
@@ -1740,6 +1764,7 @@ mod tests {
         let tx: MockTransmitter = MockTransmitter { tx_slim, tx_app };
 
         let source = Agent::from_strings("cisco", "default", "local_agent", 0);
+        let remote_conn = 1;
 
         let session_config: StreamingConfiguration =
             StreamingConfiguration::new(SessionDirection::Sender, None, false, None, None, false);
@@ -1750,6 +1775,7 @@ mod tests {
                 session_config.clone(),
                 SessionDirection::Sender,
                 source.clone(),
+                remote_conn,
                 tx,
                 SharedSecret::new("a", "group"),
                 SharedSecret::new("a", "group"),

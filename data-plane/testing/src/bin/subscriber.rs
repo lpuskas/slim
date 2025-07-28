@@ -88,17 +88,6 @@ async fn main() {
     let svc_id = slim_config::component::id::ID::new_with_str("slim/0").unwrap();
     let svc = config.services.get_mut(&svc_id).unwrap();
 
-    // create local agent
-    let agent_name = Agent::from_strings("cisco", "default", "subscriber", id);
-    let (app, mut rx) = svc
-        .create_app(
-            &agent_name,
-            SharedSecret::new("a", "group"),
-            SharedSecret::new("a", "group"),
-        )
-        .await
-        .expect("failed to create agent");
-
     // run the service - this will create all the connections provided via the config file.
     svc.run().await.unwrap();
 
@@ -106,6 +95,18 @@ async fn main() {
     let conn_id = svc
         .get_connection_id(&svc.config().clients()[0].endpoint)
         .unwrap();
+
+    // create local agent
+    let agent_name = Agent::from_strings("cisco", "default", "subscriber", id);
+    let (app, mut rx) = svc
+        .create_app(
+            &agent_name,
+            conn_id,
+            SharedSecret::new("a", "group"),
+            SharedSecret::new("a", "group"),
+        )
+        .await
+        .expect("failed to create agent");
 
     if streaming {
         // run subscriber in streaming mode

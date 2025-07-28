@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use tracing::{debug, error, trace};
 
 use crate::{
+    SessionMessage,
     errors::SessionError,
     interceptor_mls::{METADATA_MLS_ENABLED, METADATA_MLS_INIT_COMMIT_ID},
     moderator_task::{
@@ -77,7 +78,7 @@ where
 }
 
 trait OnMessageReceived {
-    async fn on_message(&mut self, msg: Message) -> Result<(), SessionError>;
+    async fn on_message(&mut self, message: SessionMessage) -> Result<(), SessionError>;
 }
 
 pub(crate) trait MlsEndpoint {
@@ -126,10 +127,10 @@ where
     V: Verifier + Send + Sync + Clone + 'static,
     T: SessionTransmitter + Send + Sync + Clone + 'static,
 {
-    pub async fn on_message(&mut self, msg: Message) -> Result<(), SessionError> {
+    pub async fn on_message(&mut self, message: SessionMessage) -> Result<(), SessionError> {
         match self {
-            ChannelEndpoint::ChannelParticipant(cp) => cp.on_message(msg).await,
-            ChannelEndpoint::ChannelModerator(cm) => cm.on_message(msg).await,
+            ChannelEndpoint::ChannelParticipant(cp) => cp.on_message(message).await,
+            ChannelEndpoint::ChannelModerator(cm) => cm.on_message(message).await,
         }
     }
 }
@@ -532,7 +533,7 @@ where
     session_type: ProtoSessionType,
 
     /// connection id to the next hop SLIM
-    conn: Option<u64>,
+    conn: u64,
 
     /// true is the endpoint is already subscribed to the channel
     subscribed: bool,
@@ -560,6 +561,7 @@ where
         channel_id: Option<u64>,
         session_id: Id,
         session_type: ProtoSessionType,
+        conn: u64,
         max_retries: u32,
         retries_interval: Duration,
         tx: T,
@@ -570,7 +572,7 @@ where
             channel_id,
             session_id,
             session_type,
-            conn: None,
+            conn,
             subscribed: false,
             max_retries,
             retries_interval,
@@ -625,7 +627,7 @@ where
         self.subscribed = true;
 
         // subscribe for the channel
-        let header = Some(SlimHeaderFlags::default().with_forward_to(self.conn.unwrap()));
+        let header = Some(SlimHeaderFlags::default().with_forward_to(self.conn));
         let sub = Message::new_subscribe(&self.name, &self.channel_name, self.channel_id, header);
 
         self.send(sub).await?;
@@ -644,7 +646,7 @@ where
             &self.name,
             route_name,
             route_id,
-            Some(SlimHeaderFlags::default().with_recv_from(self.conn.unwrap())),
+            Some(SlimHeaderFlags::default().with_recv_from(self.conn)),
         );
 
         self.send(msg).await
@@ -660,7 +662,7 @@ where
             &self.name,
             route_name,
             route_id,
-            Some(SlimHeaderFlags::default().with_recv_from(self.conn.unwrap())),
+            Some(SlimHeaderFlags::default().with_recv_from(self.conn)),
         );
 
         self.send(msg).await
@@ -668,7 +670,7 @@ where
 
     async fn leave(&self) -> Result<(), SessionError> {
         // unsubscribe for the channel
-        let header = Some(SlimHeaderFlags::default().with_forward_to(self.conn.unwrap()));
+        let header = Some(SlimHeaderFlags::default().with_forward_to(self.conn));
         let unsub =
             Message::new_unsubscribe(&self.name, &self.channel_name, self.channel_id, header);
 
@@ -744,6 +746,7 @@ where
         channel_id: Option<u64>,
         session_id: Id,
         session_type: ProtoSessionType,
+        conn: u64,
         max_retries: u32,
         retries_interval: Duration,
         mls: Option<MlsState<P, V>>,
@@ -755,6 +758,7 @@ where
             channel_id,
             session_id,
             session_type,
+            conn,
             max_retries,
             retries_interval,
             tx,
@@ -786,7 +790,6 @@ where
             .0;
 
         // set local state according to the info in the message
-        self.endpoint.conn = Some(msg.get_incoming_conn());
         self.endpoint.session_id = msg.get_session_header().get_session_id();
         self.endpoint.channel_name = names.channel_name.clone();
 
@@ -1048,7 +1051,8 @@ where
     V: Verifier + Send + Sync + Clone + 'static,
     T: SessionTransmitter + Send + Sync + Clone + 'static,
 {
-    async fn on_message(&mut self, msg: Message) -> Result<(), SessionError> {
+    async fn on_message(&mut self, message: SessionMessage) -> Result<(), SessionError> {
+        let msg = message.message;
         let msg_type = msg.get_session_header().session_message_type();
         match msg_type {
             ProtoSessionMessageType::ChannelDiscoveryRequest => {
@@ -1152,6 +1156,7 @@ where
         channel_id: Option<u64>,
         session_id: Id,
         session_type: ProtoSessionType,
+        conn: u64,
         max_retries: u32,
         retries_interval: Duration,
         mls: Option<MlsState<P, V>>,
@@ -1169,6 +1174,7 @@ where
             channel_id,
             session_id,
             session_type,
+            conn,
             max_retries,
             retries_interval,
             tx,
@@ -1362,8 +1368,7 @@ where
             .unwrap()
             .discovery_complete(recv_msg_id)?;
 
-        // set the local state and join the channel
-        self.endpoint.conn = Some(msg.get_incoming_conn());
+        // join the channel
         self.join().await?;
 
         // an endpoint replied to the discovery message
@@ -1852,15 +1857,22 @@ where
     V: Verifier + Send + Sync + Clone + 'static,
     T: SessionTransmitter + Send + Sync + Clone + 'static,
 {
-    async fn on_message(&mut self, msg: Message) -> Result<(), SessionError> {
+    async fn on_message(&mut self, message: SessionMessage) -> Result<(), SessionError> {
+        let msg = message.message;
         let msg_type = msg.get_session_header().session_message_type();
         match msg_type {
             ProtoSessionMessageType::ChannelDiscoveryRequest => {
                 // here we need to send an invite to the remote node so we need
-                // to set a route to reach it first. this is need also if the 
+                // to set a route to reach it first. this is need also if the
                 // task will be done later
-                let (name, id) = msg.get_name();
-                self.endpoint.set_route(&name, id).await?;
+                let (name, id) = message.info.get_message_destination();
+                if name.is_none() {
+                    return Err(SessionError::Processing(
+                        "error parsing message destination".to_string(),
+                    ));
+                }
+
+                self.endpoint.set_route(&name.unwrap(), id).await?;
 
                 // the channel discovery starts a new participant invite.
                 // process the request only if not busy
@@ -1952,7 +1964,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::testutils::MockTransmitter;
+    use crate::{session::Info, testutils::MockTransmitter};
 
     use super::*;
     use slim_auth::shared_secret::SharedSecret;
@@ -2006,6 +2018,7 @@ mod tests {
             None,
             SESSION_ID,
             ProtoSessionType::SessionUnknown,
+            conn,
             3,
             Duration::from_millis(100),
             Some(moderator_mls),
@@ -2017,6 +2030,7 @@ mod tests {
             None,
             SESSION_ID,
             ProtoSessionType::SessionUnknown,
+            conn,
             3,
             Duration::from_millis(100),
             Some(participant_mls),
@@ -2033,20 +2047,40 @@ mod tests {
             Some(flags),
         ));
 
+        let msg_id = rand::random::<u32>();
         let session_header = Some(SessionHeader::new(
             ProtoSessionType::SessionUnknown.into(),
             ProtoSessionMessageType::ChannelDiscoveryRequest.into(),
             SESSION_ID,
-            rand::random::<u32>(),
+            msg_id,
         ));
-        let payload: Vec<u8> =
-            bincode::encode_to_vec(&moderator, bincode::config::standard()).unwrap();
-        let request = Message::new_publish_with_headers(slim_header, session_header, "", payload);
+
+        let request = Message::new_publish_with_headers(slim_header, session_header, "", vec![]);
+
+        let info = Info {
+            id: SESSION_ID,
+            message_id: Some(msg_id),
+            session_message_type: ProtoSessionMessageType::ChannelDiscoveryRequest,
+            session_type: ProtoSessionType::SessionFireForget,
+            message_source: Some(moderator.clone()),
+            message_destination: Some(participant.agent_type().clone()),
+            message_destination_id: None,
+            input_connection: None,
+        };
 
         // receive the request at the session layer
-        cm.on_message(request.clone()).await.unwrap();
+        let session_msg = SessionMessage::from((request.clone(), info));
+        cm.on_message(session_msg.clone()).await.unwrap();
 
         // the request is forwarded to slim
+        let msg = moderator_rx.recv().await.unwrap().unwrap();
+
+        // this message is a set route for the new name
+        let header = Some(SlimHeaderFlags::default().with_recv_from(conn));
+        let sub = Message::new_subscribe(&moderator, participant.agent_type(), None, header);
+        assert_eq!(sub, msg);
+
+        // this should be the request itself
         let msg = moderator_rx.recv().await.unwrap().unwrap();
         assert_eq!(request, msg);
 
@@ -2074,7 +2108,8 @@ mod tests {
 
         // message reception on moderator side
         msg.set_incoming_conn(Some(conn));
-        cm.on_message(msg).await.unwrap();
+        let session_msg = SessionMessage::from(msg);
+        cm.on_message(session_msg).await.unwrap();
 
         // the first message is the subscription for the channel name
         let header = Some(SlimHeaderFlags::default().with_forward_to(conn));
@@ -2114,7 +2149,8 @@ mod tests {
 
         msg.set_incoming_conn(Some(conn));
         let msg_id = msg.get_id();
-        cp.on_message(msg).await.unwrap();
+        let session_msg = SessionMessage::from(msg);
+        cp.on_message(session_msg).await.unwrap();
 
         // the first message is the set route for moderator name
         let header = Some(SlimHeaderFlags::default().with_recv_from(conn));
@@ -2144,7 +2180,8 @@ mod tests {
         assert_eq!(msg.get_session_header(), reply.get_session_header());
 
         msg.set_incoming_conn(Some(conn));
-        cm.on_message(msg).await.unwrap();
+        let session_msg = SessionMessage::from(msg);
+        cm.on_message(session_msg).await.unwrap();
 
         // create a reply to compare with the output of on_message
         let mut reply = cm.endpoint.create_channel_message(
@@ -2166,7 +2203,8 @@ mod tests {
         // receive the message on the participant side
         msg.set_incoming_conn(Some(conn));
         let msg_id = msg.get_id();
-        cp.on_message(msg).await.unwrap();
+        let session_msg = SessionMessage::from(msg);
+        cp.on_message(session_msg).await.unwrap();
 
         // the first message generated is a subscription for the channel name
         let header = Some(SlimHeaderFlags::default().with_forward_to(conn));

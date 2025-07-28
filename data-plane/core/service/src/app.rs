@@ -113,6 +113,7 @@ where
     V: Verifier + Send + Sync + Clone + 'static,
 {
     /// Create new App instance
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         agent_name: &Agent,
         identity_provider: P,
@@ -258,7 +259,7 @@ where
     pub async fn invite_participant(
         &self,
         destination: &AgentType,
-        session_info: session::Info,
+        mut session_info: session::Info,
     ) -> Result<(), ServiceError> {
         let slim_header = Some(SlimHeader::new(
             self.session_layer.agent_name(),
@@ -273,6 +274,8 @@ where
             session_info.id,
             rand::random::<u32>(),
         ));
+
+        session_info.set_message_destination(destination.clone(), None);
 
         let msg = Message::new_publish_with_headers(slim_header, session_header, "", vec![]);
 
@@ -542,8 +545,13 @@ where
     }
 
     #[allow(dead_code)]
-    pub(crate) fn conn_id(&self) -> u64 {
-        self.conn_id
+    pub(crate) fn local_conn_id(&self) -> u64 {
+        self.local_conn_id
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn remote_conn_id(&self) -> u64 {
+        self.remote_conn_id
     }
 
     pub(crate) fn agent_name(&self) -> &Agent {
@@ -605,6 +613,7 @@ where
                     conf,
                     SessionDirection::Bidirectional,
                     self.agent_name().clone(),
+                    self.remote_conn_id,
                     tx,
                     self.identity_provider.clone(),
                     self.identity_verifier.clone(),
@@ -619,6 +628,7 @@ where
                     conf,
                     direction,
                     self.agent_name().clone(),
+                    self.remote_conn_id,
                     tx,
                     self.identity_provider.clone(),
                     self.identity_verifier.clone(),
@@ -999,6 +1009,7 @@ mod tests {
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
             0,
+            1,
             tx_slim,
             tx_app,
             std::path::PathBuf::from("/tmp/test_storage"),
@@ -1023,6 +1034,7 @@ mod tests {
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
             0,
+            1,
             tx_slim.clone(),
             tx_app.clone(),
             std::path::PathBuf::from("/tmp/test_storage"),
@@ -1049,6 +1061,7 @@ mod tests {
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
             0,
+            1,
             tx_slim.clone(),
             tx_app.clone(),
             std::path::PathBuf::from("/tmp/test_storage"),
@@ -1074,6 +1087,7 @@ mod tests {
             SharedSecret::new("a", "group"),
             SharedSecret::new("a", "group"),
             0,
+            1,
             tx_slim.clone(),
             tx_app.clone(),
             std::path::PathBuf::from("/tmp/test_storage"),
@@ -1107,6 +1121,7 @@ mod tests {
             identity.clone(),
             identity.clone(),
             0,
+            1,
             tx_slim.clone(),
             tx_app.clone(),
             std::path::PathBuf::from("/tmp/test_storage"),
@@ -1186,6 +1201,7 @@ mod tests {
             identity.clone(),
             identity.clone(),
             0,
+            1,
             tx_slim.clone(),
             tx_app.clone(),
             std::path::PathBuf::from("/tmp/test_storage"),
