@@ -22,6 +22,7 @@ class PyKey:
 
 class PyService:
     id: builtins.int
+    conn_id: builtins.int
 
 class PySessionInfo:
     id: builtins.int
@@ -57,6 +58,7 @@ class PyKeyData(Enum):
 class PyKeyFormat(Enum):
     Pem = auto()
     Jwk = auto()
+    Jwks = auto()
 
 class PySessionConfiguration(Enum):
     FireAndForget = auto()
@@ -77,10 +79,7 @@ class PySessionType(Enum):
     FIRE_AND_FORGET = auto()
     STREAMING = auto()
 
-def connect(svc:PyService, config:dict) -> typing.Any:
-    ...
-
-def create_pyservice(organization:builtins.str, namespace:builtins.str, agent_type:builtins.str, provider:PyIdentityProvider, verifier:PyIdentityVerifier) -> typing.Any:
+def create_pyservice(organization:builtins.str, namespace:builtins.str, agent_type:builtins.str, provider:PyIdentityProvider, verifier:PyIdentityVerifier, client_config:dict) -> typing.Any:
     ...
 
 def create_session(svc:PyService, config:PySessionConfiguration) -> typing.Any:

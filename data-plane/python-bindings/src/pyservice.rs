@@ -43,6 +43,7 @@ where
     V: Verifier + Send + Sync + Clone + 'static,
 {
     app: App<P, V>,
+    conn_id: u64,
     service: Service,
     agent: Agent,
     rx: RwLock<session::AppChannelReceiver>,
@@ -55,6 +56,11 @@ impl PyService {
     pub fn id(&self) -> u64 {
         self.sdk.agent.agent_id()
     }
+
+    #[getter]
+    pub fn conn_id(&self) -> u64 {
+        self.sdk.conn_id
+    }
 }
 
 impl PyService {
@@ -64,6 +70,7 @@ impl PyService {
         agent_type: String,
         provider: PyIdentityProvider,
         verifier: PyIdentityVerifier,
+        client_config: Option<PyGrpcClientConfig>,
     ) -> Result<Self, ServiceError> {
         // Convert the PyIdentityProvider into IdentityProvider
         let provider: IdentityProvider = provider.into();
@@ -88,12 +95,19 @@ impl PyService {
         // create local service
         let svc = Service::new(svc_id);
 
+        let conn_id = if client_config.is_none() {
+            u64::MAX // this ia s server, the conn id is not used
+        } else {
+            svc.connect(client_config.as_ref().unwrap()).await?
+        };
+
         // Get the rx channel
-        let (app, rx) = svc.create_app(&agent, provider, verifier).await?;
+        let (app, rx) = svc.create_app(&agent, conn_id, provider, verifier).await?;
 
         // create the service
         let sdk = Arc::new(PyServiceInternal {
             service: svc,
+            conn_id,
             app,
             agent,
             rx: RwLock::new(rx),
@@ -123,10 +137,10 @@ impl PyService {
         self.sdk.service.stop_server(endpoint)
     }
 
-    async fn connect(&self, config: PyGrpcClientConfig) -> Result<u64, ServiceError> {
+    /*async fn connect(&self, config: PyGrpcClientConfig) -> Result<u64, ServiceError> {
         // Get service and connect
         self.sdk.service.connect(&config).await
-    }
+    }*/
 
     async fn disconnect(&self, conn: u64) -> Result<(), ServiceError> {
         self.sdk.service.disconnect(conn)
@@ -411,7 +425,7 @@ pub fn stop_server(py: Python, svc: PyService, endpoint: String) -> PyResult<Bou
     })
 }
 
-#[gen_stub_pyfunction]
+/*#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (
     svc,
@@ -425,7 +439,7 @@ pub fn connect(py: Python, svc: PyService, config: Py<PyDict>) -> PyResult<Bound
             .await
             .map_err(|e| PyErr::new::<PyException, _>(e.to_string()))
     })
-}
+}*/
 
 #[gen_stub_pyfunction]
 #[pyfunction]
@@ -574,7 +588,7 @@ pub fn receive(py: Python, svc: PyService) -> PyResult<Bound<PyAny>> {
 
 #[gen_stub_pyfunction]
 #[pyfunction]
-#[pyo3(signature = (organization, namespace, agent_type, provider, verifier))]
+#[pyo3(signature = (organization, namespace, agent_type, provider, verifier, client_config))]
 pub fn create_pyservice(
     py: Python,
     organization: String,
@@ -582,9 +596,18 @@ pub fn create_pyservice(
     agent_type: String,
     provider: PyIdentityProvider,
     verifier: PyIdentityVerifier,
+    client_config: Py<PyDict>,
 ) -> PyResult<Bound<PyAny>> {
+    let dict = client_config.into_bound(py);
+    let config: Option<PyGrpcClientConfig> = if dict.is_empty() {
+        None
+    } else {
+        let c = from_pyobject(dict)?;
+        Some(c)
+    };
+
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        PyService::create_pyservice(organization, namespace, agent_type, provider, verifier)
+        PyService::create_pyservice(organization, namespace, agent_type, provider, verifier, config)
             .await
             .map_err(|e| PyErr::new::<PyException, _>(e.to_string()))
     })

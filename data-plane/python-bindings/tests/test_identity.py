@@ -17,6 +17,7 @@ def create_slim(
     organization,
     namespace,
     agent_type,
+    client_config,
     private_key,
     private_key_algorithm,
     public_key,
@@ -51,7 +52,7 @@ def create_slim(
     )
 
     return slim_bindings.Slim.new(
-        organization, namespace, agent_type, provider, verifier
+        organization, namespace, agent_type, provider, verifier, client_config
     )
 
 
@@ -79,6 +80,7 @@ async def test_identity_verification(server, audience):
         org,
         ns,
         sender,
+        {"endpoint": "http://127.0.0.1:52345", "tls": {"insecure": True}},
         private_key_sender,
         algorithm_sender,
         public_key_receiver,
@@ -86,9 +88,9 @@ async def test_identity_verification(server, audience):
     )
 
     # Connect to the service and subscribe for the local name
-    _ = await slim_sender.connect(
-        {"endpoint": "http://127.0.0.1:52345", "tls": {"insecure": True}}
-    )
+    #_ = await slim_sender.connect(
+    #    {"endpoint": "http://127.0.0.1:52345", "tls": {"insecure": True}}
+    #)
 
     # create second local agent. note that the receiver will use the public key of the sender
     # to verify the JWT of the request message
@@ -97,6 +99,7 @@ async def test_identity_verification(server, audience):
         org,
         ns,
         receiver,
+        {"endpoint": "http://127.0.0.1:52345", "tls": {"insecure": True}},
         private_key_receiver,
         algorithm_receiver,
         public_key_sender,
@@ -105,12 +108,12 @@ async def test_identity_verification(server, audience):
     )
 
     # Connect to SLIM server
-    _ = await slim_receiver.connect(
-        {"endpoint": "http://127.0.0.1:52345", "tls": {"insecure": True}}
-    )
+    #_ = await slim_receiver.connect(
+    #    {"endpoint": "http://127.0.0.1:52345", "tls": {"insecure": True}}
+    #)
 
     # set route
-    await slim_sender.set_route(org, ns, receiver)
+    #await slim_sender.set_route(org, ns, receiver)
 
     # create request/reply session with default config
     session_info = await slim_sender.create_session(
@@ -118,6 +121,9 @@ async def test_identity_verification(server, audience):
             timeout=datetime.timedelta(seconds=1), max_retries=3, sticky=False
         )
     )
+
+    # sticky false, so set route
+    await slim_sender.set_route(org, ns, receiver)
 
     # messages
     pub_msg = str.encode("thisistherequest")

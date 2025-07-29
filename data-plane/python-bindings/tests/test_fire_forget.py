@@ -18,27 +18,27 @@ async def test_sticky_session(server):
     sender = "sender"
 
     # create new slim object
-    sender = await create_slim(org, ns, sender, "secret")
+    sender = await create_slim(org, ns, sender, "secret", {"endpoint": "http://127.0.0.1:22345", "tls": {"insecure": True}})
 
     # Connect to the service and subscribe for the local name
-    _ = await sender.connect(
-        {"endpoint": "http://127.0.0.1:22345", "tls": {"insecure": True}}
-    )
+   # _ = await sender.connect(
+   #     {"endpoint": "http://127.0.0.1:22345", "tls": {"insecure": True}}
+   # )
 
     # set route to receiver
-    await sender.set_route(org, ns, "receiver")
+    # await sender.set_route(org, ns, "receiver")
 
     receiver_counts = {i: 0 for i in range(10)}
 
     # run 10 receivers concurrently
     async def run_receiver(i: int):
         # create new receiver object
-        receiver = await create_slim(org, ns, "receiver", "secret")
+        receiver = await create_slim(org, ns, "receiver", "secret", {"endpoint": "http://127.0.1:22345", "tls": {"insecure": True}})
 
         # Connect to the service and subscribe for the local name
-        _ = await receiver.connect(
-            {"endpoint": "http://127.0.1:22345", "tls": {"insecure": True}}
-        )
+       # _ = await receiver.connect(
+       #     {"endpoint": "http://127.0.1:22345", "tls": {"insecure": True}}
+       # )
 
         async with receiver:
             # wait for a new session

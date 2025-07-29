@@ -22,12 +22,12 @@ async def test_streaming(server):
     pub_msg = "Hello from producer"
 
     # create new SLIM object
-    producer = await create_slim(org, ns, agent, "secret")
+    producer = await create_slim(org, ns, agent, "secret", {"endpoint": "http://127.0.0.1:12365", "tls": {"insecure": True}})
 
     # Connect to the service and subscribe for the local name
-    _ = await producer.connect(
-        {"endpoint": "http://127.0.0.1:12365", "tls": {"insecure": True}}
-    )
+    #_ = await producer.connect(
+    #    {"endpoint": "http://127.0.0.1:12365", "tls": {"insecure": True}}
+    #)
 
     # set route for the producer, so that messages can be sent to consumer that
     # subscribed to the producer topic
@@ -50,12 +50,12 @@ async def test_streaming(server):
 
         print(f"Creating consumer {name}...")
 
-        consumer = await create_slim(org, ns, name, "secret")
+        consumer = await create_slim(org, ns, name, "secret", {"endpoint": "http://127.0.0.1:12365", "tls": {"insecure": True}})
 
         # Connect to SLIM server
-        _ = await consumer.connect(
-            {"endpoint": "http://127.0.0.1:12365", "tls": {"insecure": True}}
-        )
+        #_ = await consumer.connect(
+        #    {"endpoint": "http://127.0.0.1:12365", "tls": {"insecure": True}}
+        #)
 
         # Subscribe to the producer topic
         await consumer.subscribe(org, ns, broadcast_topic)

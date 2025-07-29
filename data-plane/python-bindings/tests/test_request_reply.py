@@ -18,24 +18,24 @@ async def test_request_reply(server):
     agent1 = "slim1"
 
     # create new slim object
-    slim1 = await create_slim(org, ns, agent1, "secret")
+    slim1 = await create_slim(org, ns, agent1, "secret", {"endpoint": "http://127.0.0.1:12356", "tls": {"insecure": True}})
 
     # Connect to the service and subscribe for the local name
-    _ = await slim1.connect(
-        {"endpoint": "http://127.0.0.1:12356", "tls": {"insecure": True}}
-    )
+    #_ = await slim1.connect(
+    #    {"endpoint": "http://127.0.0.1:12356", "tls": {"insecure": True}}
+    #)
 
     # create second local agent
     agent2 = "slim2"
-    slim2 = await create_slim(org, ns, agent2, "secret")
+    slim2 = await create_slim(org, ns, agent2, "secret", {"endpoint": "http://127.0.0.1:12356", "tls": {"insecure": True}})
 
     # Connect to SLIM server
-    _ = await slim2.connect(
-        {"endpoint": "http://127.0.0.1:12356", "tls": {"insecure": True}}
-    )
+    #_ = await slim2.connect(
+    #    {"endpoint": "http://127.0.0.1:12356", "tls": {"insecure": True}}
+    #)
 
     # set route
-    await slim2.set_route("cisco", "default", agent1)
+    #await slim2.set_route("cisco", "default", agent1)
 
     # create request/reply session with default config
     session_info = await slim2.create_session(
@@ -43,6 +43,9 @@ async def test_request_reply(server):
             timeout=datetime.timedelta(seconds=1), max_retries=3, sticky=False
         )
     )
+
+    # stikcy false, so set route
+    await slim2.set_route("cisco", "default", agent1)
 
     # messages
     pub_msg = str.encode("thisistherequest")

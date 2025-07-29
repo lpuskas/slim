@@ -345,6 +345,8 @@ where
             input_connection: None,
         };
 
+        println!("----- INFO = {:?}, AGENT TYPE = {:?}", info, agent_type);
+
         let session_msg = SessionMessage::from((probe_message, info));
 
         self.state.sticky_session_status = StickySessionStatus::Discovering;
@@ -539,6 +541,7 @@ where
                 None => {
                     let ret = match self.state.sticky_session_status {
                         StickySessionStatus::Uninitialized => {
+                            println!("----- MESSAGE INFO -> {:?}", message.info);
                             self.start_sticky_session_discovery(
                                 &message.message.get_slim_header().get_dst().0,
                             )

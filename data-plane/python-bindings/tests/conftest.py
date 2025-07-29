@@ -21,7 +21,7 @@ async def server(request):
     )
 
     svc_server = await slim_bindings.create_pyservice(
-        "cisco", "default", "server", provider, verifier
+        "cisco", "default", "server", provider, verifier, client_config={}
     )
 
     # init tracing

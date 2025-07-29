@@ -31,12 +31,12 @@ async def test_pubsub(server, mls_enabled):  # noqa: C901
 
         print(f"Creating participant {name}...")
 
-        participant = await create_slim(org, ns, name, "secret")
+        participant = await create_slim(org, ns, name, "secret", {"endpoint": "http://127.0.0.1:12375", "tls": {"insecure": True}})
 
         # Connect to SLIM server
-        _ = await participant.connect(
-            {"endpoint": "http://127.0.0.1:12375", "tls": {"insecure": True}}
-        )
+        #_ = await participant.connect(
+        #    {"endpoint": "http://127.0.0.1:12375", "tls": {"insecure": True}}
+        #)
 
         if index == 0:
             print(f"{name} -> Creating new pubsub sessions...")
@@ -60,7 +60,7 @@ async def test_pubsub(server, mls_enabled):  # noqa: C901
                 if i != 0:
                     type_to_add = f"participant-{i}"
                     to_add = slim_bindings.PyAgentType(org, ns, type_to_add)
-                    await participant.set_route(org, ns, type_to_add)
+                    #await participant.set_route(org, ns, type_to_add)
                     await participant.invite(session_info, to_add)
                     print(f"{name} -> add {type_to_add} to the group")
 

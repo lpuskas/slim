@@ -17,7 +17,7 @@ from ._slim_bindings import (  # type: ignore[attr-defined]
     __version__,
     build_info,
     build_profile,
-    connect,
+    #connect,
     create_pyservice,
     create_session,
     delete_session,
@@ -218,6 +218,7 @@ class Slim:
         agent: str,
         provider: PyIdentityProvider,
         verifier: PyIdentityVerifier,
+        client_config: dict,
     ) -> "Slim":
         """
         Create a new SLIM instance. A SLIM instamce is associated to one single
@@ -233,13 +234,27 @@ class Slim:
         Returns:
             Slim: A new SLIM instance
         """
+        #svc = await create_pyservice(organization, namespace, agent, provider, verifier, client_config)
+        # get conn id
 
-        return cls(
-            await create_pyservice(organization, namespace, agent, provider, verifier),
+        slim = cls(
+            await create_pyservice(organization, namespace, agent, provider, verifier, client_config),
             organization,
             namespace,
             agent,
         )
+
+        # Save the connection ID
+        conn_id = slim.svc.conn_id
+        slim.conn_ids[client_config["endpoint"]] = conn_id
+
+        # For the moment we manage one connection only
+        #slim.conn_id = conn_id
+
+        # Subscribe to the local name
+        await subscribe(slim.svc, conn_id, slim.local_name, slim.local_id)
+
+        return slim
 
     def get_agent_id(self) -> int:
         """
@@ -409,7 +424,7 @@ class Slim:
 
         await stop_server(self.svc, endpoint)
 
-    async def connect(self, client_config: dict) -> int:
+    '''async def connect(self, client_config: dict) -> int:
         """
         Connect to a remote SLIM service.
         This function will block until the connection is established.
@@ -436,7 +451,7 @@ class Slim:
         await subscribe(self.svc, conn_id, self.local_name, self.local_id)
 
         # return the connection ID
-        return conn_id
+        return conn_id'''
 
     async def disconnect(self, endpoint: str):
         """
@@ -452,6 +467,7 @@ class Slim:
         """
         conn = self.conn_ids[endpoint]
         await disconnect(self.svc, conn)
+
 
     async def set_route(
         self,
@@ -474,7 +490,7 @@ class Slim:
         """
 
         name = PyAgentType(organization, namespace, agent)
-        await set_route(self.svc, self.conn_id, name, id)
+        await set_route(self.svc, self.svc.conn_id, name, id)
 
     async def remove_route(
         self, organization: str, namespace: str, agent: str, id: Optional[int] = None
@@ -493,7 +509,7 @@ class Slim:
         """
 
         name = PyAgentType(organization, namespace, agent)
-        await remove_route(self.svc, self.conn_id, name, id)
+        await remove_route(self.svc, self.svc.conn_id, name, id)
 
     async def subscribe(
         self, organization: str, namespace: str, agent: str, id: Optional[int] = None
@@ -512,7 +528,7 @@ class Slim:
         """
 
         sub = PyAgentType(organization, namespace, agent)
-        await subscribe(self.svc, self.conn_id, sub, id)
+        await subscribe(self.svc, self.svc.conn_id, sub, id)
 
     async def unsubscribe(
         self, organization: str, namespace: str, agent: str, id: Optional[int] = None
@@ -531,7 +547,7 @@ class Slim:
         """
 
         unsub = PyAgentType(organization, namespace, agent)
-        await unsubscribe(self.svc, self.conn_id, unsub, id)
+        await unsubscribe(self.svc, self.svc.conn_id, unsub, id)
 
     async def publish(
         self,
