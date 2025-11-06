@@ -14,17 +14,17 @@ builds:
     goos:
       - darwin
       - linux
-#      - windows
+    #      - windows
 
     goarch:
       - amd64
       - arm64
-#      - 386
+    #      - 386
 
     ldflags:
-      - -X '{{.Env.MAIN_MODULE}}/control-plane/slimctl/internal/cmd/version.semVersion={{.Version}}'
-      - -X '{{.Env.MAIN_MODULE}}/control-plane/slimctl/internal/cmd/version.gitCommit={{.Commit}}'
-      - -X '{{.Env.MAIN_MODULE}}/control-plane/slimctl/internal/cmd/version.buildDate={{.Date}}'
+      - -X '{{.ModulePath}}/control-plane/slimctl/internal/cmd/version.semVersion={{.Version}}'
+      - -X '{{.ModulePath}}/control-plane/slimctl/internal/cmd/version.gitCommit={{.Commit}}'
+      - -X '{{..ModulePath}}/control-plane/slimctl/internal/cmd/version.buildDate={{.Date}}'
 
     hooks:
       pre:
@@ -65,9 +65,16 @@ homebrew_casks:
 
     repository:
       owner: lpuskas
-      branch: brew
+      name: "slim"
 
-      name: "lpuskas/slim"
+      branch: brew
+      token: {{ .Env.GITHUB_TOKEN }}
+      token_type: "github"
+
+      pull_request:
+        enabled: true
+        title_template: "Update slimctl cask to {{ .Version }}"
+
 
 
 
