@@ -68,12 +68,16 @@ homebrew_casks:
       name: "slim"
 
       branch: brew
-      token: {{ .Env.GITHUB_TOKEN }}
-      token_type: "github"
+      token: "{{ .Env.GITHUB_TOKEN }}"
 
       pull_request:
         enabled: true
-        title_template: "Update slimctl cask to {{ .Version }}"
+        draft: false
+        title: "Update slimctl to {{ .Version }}"
+        body: "This PR was created automatically by GoReleaser to update slimctl to version {{ .Version }}."
+        maintainer_can_modify: true
+
+
 
 
 
