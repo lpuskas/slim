@@ -15,12 +15,12 @@ cask "slimctl" do
     on_intel do
       url "https://github.com/lpuskas/slim/releases/download/v#{version}/slimctl_#{version}_darwin_amd64.tar.gz",
         using: :homebrew_curl
-      sha256 "483f9c7f3d0a34a019d530fcab245cecac52c1ca87f787fe89770f8e6f88752a"
+      sha256 "970a5cd1ab699b2c59ba5608c5bd1eb4d100bfe7687301b68f7f046d09ec3c65"
     end
     on_arm do
       url "https://github.com/lpuskas/slim/releases/download/v#{version}/slimctl_#{version}_darwin_arm64.tar.gz",
         using: :homebrew_curl
-      sha256 "b61f4cc40d50339d5c064a82cd86aa8ad3a0155efc410da4381a23c3df0389dc"
+      sha256 "dc40dc0484077ea20e4a02868f2b9471ab4ab8d475d24120e2518c391e246b15"
     end
   end
 
@@ -28,12 +28,12 @@ cask "slimctl" do
     on_intel do
       url "https://github.com/lpuskas/slim/releases/download/v#{version}/slimctl_#{version}_linux_amd64.tar.gz",
         using: :homebrew_curl
-      sha256 "a702cd5c71fe7cf86890bfe979a5547153fa39c5a20ce277ff4329b799774181"
+      sha256 "1b0eb52d8ff75703fb813e12fa0d493da2a4ab8dff7f53ea449e6a5bd7d2631e"
     end
     on_arm do
       url "https://github.com/lpuskas/slim/releases/download/v#{version}/slimctl_#{version}_linux_arm64.tar.gz",
         using: :homebrew_curl
-      sha256 "07eac0557e4d8a48b0a59e3c8c827692016bfe3dc17566aad55dd6a41d7ee192"
+      sha256 "7a758fc5202b4532dcf25f9415da3717a75f31ef91705ca531e4e3310a73e8ac"
     end
   end
 
