@@ -2,8 +2,8 @@
 cask "slimctl" do
   name "slimctl"
   desc "A CLI tool for managing SLIM Devices"
-  homepage "https://github.com/agntcy/slim/control-plane/slimctl"
-  version "slimctl-v0.0.100-SNAPSHOT-f15a5a6"
+  homepage "https://github.com/lpuskas/slim/control-plane/slimctl"
+  version "slimctl-v0.0.200-SNAPSHOT-0356b49"
 
   livecheck do
     skip "Auto-generated on release."
@@ -12,28 +12,17 @@ cask "slimctl" do
   binary "slimctl"
 
   on_macos do
-    on_intel do
-      url "https://github.com/agntcy/slim/releases/download/slimctl-v0.0.100/slimctl_#{version}_darwin_amd64.tar.gz",
-        using: :homebrew_curl
-      sha256 "7e667d715964805009bcae29512f3f5a87adf60f210ea56e1ecacf65743e6c6e"
-    end
     on_arm do
-      url "https://github.com/agntcy/slim/releases/download/slimctl-v0.0.100/slimctl_#{version}_darwin_arm64.tar.gz",
+      url "https://github.com/lpuskas/slim/releases/download/slimctl-v0.0.200/slimctl_#{version}_darwin_arm64.tar.gz",
         using: :homebrew_curl
-      sha256 "15898ed3698a79c96e15b1195fb8c39a624ba3c56b355c1a89ae2efa90cb78ea"
+      sha256 "4c7d54a6ec0be46fb91d00c24d3d4130d749eae97c70b14b8e209d5dc4452e60"
     end
   end
 
-  on_linux do
-    on_intel do
-      url "https://github.com/agntcy/slim/releases/download/slimctl-v0.0.100/slimctl_#{version}_linux_amd64.tar.gz",
-        using: :homebrew_curl
-      sha256 "0c29b351cf8cc1da3a7a8573b868fac80e696d74a6599f8ef2226f16320ff96d"
-    end
-    on_arm do
-      url "https://github.com/agntcy/slim/releases/download/slimctl-v0.0.100/slimctl_#{version}_linux_arm64.tar.gz",
-        using: :homebrew_curl
-      sha256 "2aac337ae830562a6e88cdc58f00996c7b46a2ec71610152ce96cc9a74b05069"
+  postflight do
+    system "chmod", "+x", "#{staged_path}/slimctl"
+    if OS.mac?
+      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/slimctl"]
     end
   end
 
